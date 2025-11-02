@@ -76,8 +76,12 @@ WSGI_APPLICATION = 'myacademy.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.mysql', # 여기를 수정
+        'NAME': 'myacademy_db',        # MySQL에서 만든 DB 이름
+        'USER': 'root',                 # MySQL 사용자 이름
+        'PASSWORD': 'hyperkjy1405!',    # MySQL 비밀번호
+        'HOST': 'localhost',
+        'PORT': '3306',                 # MySQL 기본 포트
     }
 }
 
