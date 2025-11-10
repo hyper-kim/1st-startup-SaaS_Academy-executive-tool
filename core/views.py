@@ -9,7 +9,7 @@ from .models import Student, Payment
 from .serializers import StudentSerializer, PaymentSerializer
 
 # 💡 1. 엑셀 대신 '금액'으로 학생을 찾는 새 AI 로직을 가져옵니다.
-from .services import find_student_by_amount
+from .services import find_student_by_amount, call_clova_ocr_api
 
 # 'ModelViewSet'은 API의 모든 기본 동작(CRUD)을 자동으로 만들어줍니다.
 # (CRUD: Create, Retrieve, Update, Delete)
@@ -93,15 +93,16 @@ class MatchingViewSet(viewsets.ViewSet):
         다시 _process_text_data 함수로 넘겨 처리합니다.
         """
         
-        # 1. (필수 구현) 네이버 CLOVA OCR API 호출 로직
-        #    image 파일을 OCR API로 전송합니다.
-        # ocr_text = call_naver_ocr_api(image) 
+        # 💡 3. 실제 OCR API 호출! (기존 시뮬레이션 코드 삭제)
+        print(f"'{image.name}' 이미지 OCR 처리 시작...")
+        ocr_text = call_clova_ocr_api(image)
         
-        # --- (아래는 OCR API를 구현했다는 가정 하의 테스트용 코드) ---
-        # (실제 구현 시 위 OCR API 호출 코드로 대체해야 합니다)
-        print(f"'{image.name}' 이미지 처리 시뮬레이션 (OCR API 호출 필요)")
-        ocr_text = "NH16140241 249,625원\nKB10410261 149,400원" # OCR 결과 텍스트 (가상)
-        # --- (테스트용 코드 끝) ---
+        if "ERROR:" in ocr_text:
+            print(f"OCR 실패: {ocr_text}")
+            return [f"OCR 처리 실패: {ocr_text}"]
         
-        # 2. OCR로 인식된 텍스트를 다시 텍스트 처리 함수로 넘깁니다.
+        print(f"OCR 인식 결과:\n{ocr_text}")
+        
+        # 4. OCR로 인식된 텍스트를 다시 텍스트 처리 로직으로 넘깁니다.
+        #    (금액 기반 1:1 매칭)
         return self._process_text_data(ocr_text)
