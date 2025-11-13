@@ -5,6 +5,7 @@ class Student(models.Model):
     name = models.CharField(max_length=100)
     parent_contact = models.CharField(max_length=20, blank=True) # 학부모 연락처
     base_fee = models.IntegerField(default=0) # 기본 월 수강료 (AI 매칭 기준)
+    book_fee = models.IntegerField(default=0) # 교재비
     notes = models.TextField(blank=True) # 기타 메모
     
     def __str__(self):
