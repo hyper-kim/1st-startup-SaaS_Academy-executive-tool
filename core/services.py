@@ -7,9 +7,41 @@ import time
 import re
 from itertools import combinations
 from django.conf import settings
-from fuzzywuzzy import fuzz
+from fuzzywuzzy import fuzz, process
 from .models import Student, Payment
 
+def scan_text_for_students(full_text):
+    """
+    OCR 전체 텍스트를 스캔하여, DB에 등록된 학생 이름이 
+    포함되어 있는지 전수 조사합니다. (여러 명 발견 가능)
+    """
+    
+    # 1. DB의 모든 학생 이름을 가져옵니다.
+    all_students = list(Student.objects.all())
+    found_students = []
+    
+    # 텍스트 전처리 (공백 줄이기 등)
+    normalized_text = full_text.replace(" ", "") # "박 재" -> "박재" 등 인식을 위해
+    
+    for student in all_students:
+        # 2. 학생 이름이 텍스트 안에 있는지 확인 (단순 포함 여부)
+        #    (이름이 '김준'인데 '김준수'를 찾는 오작동 방지를 위해 이름 길이에 따라 로직 조정 가능)
+        
+        # Case A: 정확히 일치하는 이름이 있는 경우
+        if student.name in full_text or student.name in normalized_text:
+            found_students.append(student)
+            continue
+            
+        # Case B: 이름이 텍스트와 매우 유사한 경우 (Fuzzy - 오타 보정)
+        # 텍스트를 한 줄씩 쪼개서 이름과 비교
+        for line in full_text.splitlines():
+            ratio = fuzz.partial_ratio(student.name, line)
+            if ratio >= 90: # 90점 이상이면 발견으로 간주
+                found_students.append(student)
+                break # 이 학생은 찾았으니 다음 학생으로
+    
+    # 중복 제거 후 반환
+    return list(set(found_students))
 # -----------------------------------------------------------------
 # 1. Naver CLOVA OCR API Service
 # -----------------------------------------------------------------

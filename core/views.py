@@ -12,6 +12,7 @@ from .serializers import StudentSerializer, PaymentSerializer
 # AI 로직 및 OCR API 호출을 위해 services.py에서 함수들을 가져옵니다.
 from .services import (
     find_student_by_amount, 
+    scan_text_for_students,
     find_student_by_name, 
     call_clova_ocr_api,
     find_payment_matches # (F-AI-02: 합산 결제)
@@ -146,88 +147,95 @@ class MatchingViewSet(viewsets.ViewSet):
     # --- 내부 헬퍼(Helper) 함수들 ---
     
     def _process_image_data(self, image):
-        """
-        (Helper) 이미지를 OCR API로 전송하고, 반환된 텍스트를
-        _process_text_data 함수로 넘겨 처리합니다.
-        """
-        
         print(f"'{image.name}' 이미지 OCR 처리 시작...")
         ocr_text = call_clova_ocr_api(image)
         
         if "ERROR:" in ocr_text:
-            print(f"OCR 실패: {ocr_text}")
             return [f"OCR 처리 실패: {ocr_text}"]
         
-        print(f"OCR 인식 결과:\n{ocr_text}")
+        print(f"OCR Raw Text:\n{ocr_text}") # 디버깅용 출력
         
-        # OCR로 인식된 텍스트를 다시 텍스트 처리 로직으로 넘깁니다.
+        # 텍스트 처리 로직으로 넘김
         return self._process_text_data(ocr_text)
-    
+
     def _process_text_data(self, text):
         """
-        (Helper) OCR 텍스트 또는 입력 텍스트를 파싱하여
-        이름과 금액을 추출하고, AI 매칭을 시도합니다.
+        [전략 변경]
+        1. 텍스트 전체에서 'DB에 있는 학생 이름'을 먼저 싹 찾습니다. (가장 정확)
+        2. 이름이 발견되면 -> '이름 매칭 성공'으로 처리.
+        3. 이름이 없으면 -> 텍스트의 모든 줄에서 '숫자(금액)'를 찾아 1:1 매칭 시도.
         """
-        processed = []
+        results = []
         
-        # '성 명' 또는 '성명' 라벨을 찾아 이름을 추출
-        name_match = re.search(r'성\s?명\s*[:\s]\s*([^\n]+)', text, re.IGNORECASE)
-        name = name_match.group(1).strip() if name_match else None
+        # --- 전략 1: 이름 기반 검색 (Priority 1) ---
+        found_students = scan_text_for_students(text)
         
-        amount = 0
-        amount_str = ""
-
-        # 1. "만원" 패턴 먼저 검색 (수기 영수증)
-        amount_match_manwon = re.search(r'(?:교습비|납부 명세)\s*[:\s]*([\d,]+)\s*만원', text, re.IGNORECASE)
-        
-        # 2. "일반" 패턴 검색 (카드 전표, 은행 이체)
-        amount_match_default = re.search(r'(?:합계\s?금액|입금|원주정산)\s*[:\s]*([\d,]+)', text, re.IGNORECASE)
-
-        try:
-            if amount_match_manwon:
-                # Case 1: "만원" 패턴 매칭 성공 (예: 8 만원)
-                amount_str = re.sub(r'[,\s]', '', amount_match_manwon.group(1)) # "8"
-                amount = int(amount_str) * 10000 # 8 -> 80000
-                    
-            elif amount_match_default:
-                # Case 2: "일반" 패턴 매칭 성공 (예: 250,000)
-                amount_str = re.sub(r'[,\s원]', '', amount_match_default.group(1)) # "250000"
-                amount = int(amount_str) # 250000
+        if found_students:
+            for student in found_students:
+                # (심화: 여기서 해당 학생 이름 근처의 금액을 찾는 로직을 추가할 수도 있음)
+                results.append(f"✅ 이름 매칭 성공: '{student.name}' 학생 발견! (수강료: {student.base_fee}원)")
             
-            else:
-                # Case 3: 금액을 못 찾음 (텍스트가 여러 줄일 수 있으니 함수 종료 X)
-                pass # 그냥 amount = 0
+            # 이름을 찾았더라도, 이름 없는 영수증이 섞여있을 수 있으니 
+            # 금액 검색도 계속 진행할지 여부는 선택 사항입니다. 
+            # 일단 여기서는 이름 찾으면 return 하지 않고 아래 금액 로직도 돌려보겠습니다.
+            # (만약 중복이 싫으면 여기서 return results 하세요)
+        
+        
+        # --- 전략 2: 금액 기반 검색 (Priority 2) ---
+        # 텍스트를 한 줄씩 읽으며 금액 패턴을 찾습니다.
+        lines = text.splitlines()
+        for line in lines:
+            # 라벨(성명 등) 제거 등 복잡한 정규식 다 버리고, 오직 '숫자'만 봅니다.
+            
+            # 1. "8 만원" 패턴 (수기 영수증)
+            match_manwon = re.search(r'([\d,]+)\s*만원', line)
+            
+            # 2. "250,000" 패턴 (일반)
+            #    (전화번호, 날짜 등 오인식 방지를 위해 1000원 이상, 콤마 포함 등을 조건으로 검)
+            match_amount = re.search(r'([\d]{1,3}(?:,[\d]{3})+)', line) # 250,000 처럼 콤마가 있는 숫자
+            
+            amount = 0
+            
+            if match_manwon:
+                # "8" -> 80000
+                num_str = match_manwon.group(1).replace(',', '')
+                amount = int(num_str) * 10000
                 
-        except ValueError:
-            processed.append(f"오류: '{amount_str}'을 숫자로 바꿀 수 없습니다.")
-            amount = 0 # 금액 인식 실패 시 0으로 초기화
-        
+            elif match_amount:
+                # "250,000" -> 250000
+                num_str = match_amount.group(1).replace(',', '')
+                amount = int(num_str)
+            
+            # 숫자가 너무 작거나(날짜), 너무 크면(전화번호) 무시
+            if amount < 1000 or amount > 5000000:
+                continue
 
-        # 3. 금액을 찾았으니, 이제 이름과 매칭 시도
-        if name and amount > 0:
-            # 이름과 금액이 모두 인식된 경우 (수기/카드 전표)
-            student = find_student_by_name(name)
+            # 이미 이름으로 찾은 학생 중에 이 금액을 가진 학생이 있다면 중복 처리 방지
+            is_already_found = False
+            for s in found_students:
+                # (수강료 또는 교재비와 일치하면 스킵)
+                if s.base_fee == amount or s.book_fee == amount:
+                    is_already_found = True
+                    break
+            
+            if is_already_found:
+                continue
+
+            # DB 매칭 시도 (1:1)
+            student = find_student_by_amount(amount)
             if student:
-                # (향후: Payment 객체 생성)
-                processed.append(f"이름/금액 매칭 성공: {name} 학생, {amount}원")
+                results.append(f"💰 금액 매칭 성공: {amount}원 -> {student.name}")
             else:
-                processed.append(f"매칭 실패: {name} 학생을 DB에서 찾을 수 없음")
-        
-        elif amount > 0:
-            # 이름 없이 금액만 인식된 경우 (은행 이체)
-            student = find_student_by_amount(amount) # 1:1 금액 매칭
-            if student:
-                processed.append(f"금액(1:1) 매칭 성공: {amount}원 -> {student.name}")
-            else:
-                # 1:1 실패 시 '합산 결제' 시도 (F-AI-02)
+                # 1:1 실패 시 합산 매칭(N:1) 시도
                 matches = find_payment_matches(amount)
                 if matches['type'] == 'N:1':
-                    student_names = ", ".join([s.name for s in matches['students']])
-                    processed.append(f"금액(N:1) 매칭 제안: {amount}원 -> {student_names} 학생들의 합산?")
-                else:
-                    processed.append(f"매칭 실패: {amount}원 (1:1 및 N:1 매칭 모두 실패)")
-        
-        else:
-            processed.append(f"매칭 실패: 텍스트에서 유효한 '금액' 패턴을 찾을 수 없음")
+                    names = ", ".join([s.name for s in matches['students']])
+                    results.append(f"💡 합산 제안: {amount}원 -> {names} 합산?")
+                
+                # 실패 로그는 너무 많이 뜨면 지저분하므로, 확실한 금액 패턴일 때만 출력
+                # results.append(f"❓ 매칭 실패: {amount}원 (학생 못 찾음)")
 
-        return processed
+        if not results:
+            results.append("❌ 매칭 실패: 인식된 이름이나 매칭되는 금액이 없습니다.")
+
+        return results

@@ -46,10 +46,34 @@
             </tbody>
     </table>
 
+    <hr>
+
+    <h2>AI 정산 / 데이터 업로드</h2>
+    <form id="matching-form">
+        <p>은행 이체 내역(텍스트)을 붙여넣거나, 영수증 사진(이미지)을 업로드하세요.</p>
+        
+        <textarea id="text-input" rows="10" style="width: 100%;"
+                  placeholder="[은행 이체 내역 텍스트]
+원주정산 220,000
+현260810260 280,872
+하나90924836 249,000"></textarea>
+
+        <p>또는 영수증/스크린샷 이미지:</p>
+        <input type="file" id="image-file" accept="image/*">
+
+        <br><br>
+        <button type="submit">AI 매칭 시작</button>
+    </form>
+
+    <h3>AI 매칭 결과:</h3>
+    <pre id="matching-results" style="background: #eee; padding: 10px; border-radius: 5px;">
+결과가 여기에 표시됩니다...
+    </pre>
+
     <script>
         // API 기본 주소 (Django 서버 주소)
-        const API_URL = 'https://special-enigma-pj5q5vj9vr563rv9r-8000.app.github.dev/api';
-
+        // const API_URL = 'https://special-enigma-pj5q5vj9vr563rv9r-8000.app.github.dev/api';
+        const API_URL = "http://127.0.0.1:8000/api"
         const textForm = document.getElementById('text-upload-form');
         const textBlock = document.getElementById('student-text-block');
         const studentList = document.getElementById('student-list');
@@ -146,6 +170,65 @@
                 alert('서버에 연결할 수 없습니다.');
             }
         }
+        // 👇 [새 기능] AI 매칭 폼을 위한 변수 추가
+        const matchingForm = document.getElementById('matching-form');
+        const textInput = document.getElementById('text-input');
+        const imageFile = document.getElementById('image-file');
+        const matchingResults = document.getElementById('matching-results');
+
+        // ... (fetchStudents, textForm.addEventListener, deleteStudent 함수는 그대로 둠) ...
+
+
+        // 👇 [새 기능] 4. AI 매칭 폼 제출 이벤트
+        matchingForm.addEventListener('submit', async (event) => {
+            event.preventDefault(); // 폼 자동 제출 방지
+            
+            // 1. FormData 객체 생성 (파일과 텍스트를 함께 보내기 위함)
+            const formData = new FormData();
+
+            // 2. 텍스트 데이터가 있으면 추가
+            if (textInput.value.trim()) {
+                formData.append('text_input', textInput.value);
+            }
+
+            // 3. 이미지 파일이 있으면 추가
+            if (imageFile.files.length > 0) {
+                formData.append('image_file', imageFile.files[0]);
+            }
+            
+            if (!textInput.value.trim() && imageFile.files.length === 0) {
+                alert('텍스트 또는 이미지 파일을 입력해주세요.');
+                return;
+            }
+
+            matchingResults.textContent = 'AI가 분석 중입니다... (최대 10초 소요)';
+
+            try {
+                // 4. 'matching/upload_data/' API로 FormData 전송
+                const response = await fetch(`${API_URL}/matching/upload_data/`, {
+                    method: 'POST',
+                    body: formData // FormData는 headers가 필요 없음
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    
+                    // 5. 결과 표시
+                    matchingResults.textContent = `[${result.message}]\n\n` + 
+                                                  result.results.join('\n');
+                    
+                    // (선택) 매칭 성공 후 학생 목록 새로고침
+                    // fetchStudents(); 
+                } else {
+                    const error = await response.json();
+                    matchingResults.textContent = `오류: ${error.error || '알 수 없는 오류'}`;
+                }
+
+            } catch (error) {
+                console.error('AI 매칭 실패:', error);
+                matchingResults.textContent = '서버 연결에 실패했습니다.';
+            }
+        });
 
         // 페이지가 처음 열릴 때 학생 목록을 불러옵니다.
         fetchStudents();
