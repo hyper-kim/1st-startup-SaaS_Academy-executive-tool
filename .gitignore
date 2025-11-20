@@ -1,15 +1,43 @@
-# Python
-__pycache__/
-*.pyc
+# --- 1. 가상환경 (절대 올리면 안 됨) ---
 venv/
 .venv/
+env/
+ENV/
 
-# Django
+# --- 2. 파이썬 공통 ---
+__pycache__/
+*.py[cod]
+*$py.class
 *.log
-*.pot
-*.sqlite3
 .env
+.DS_Store
 
-# VS Code
+# --- 3. Django (웹 서비스) ---
+*.sqlite3
+*.sqlite3-journal
+media/
+staticfiles/
+web-service/media/
+web-service/staticfiles/
+
+# --- 4. AI 엔진 (데이터 & 모델 - 용량 큼) ---
+# 학습용 이미지 데이터셋 (절대 금지)
+ai-engine/dataset/
+ai-engine/mock_data/
+
+# 학습된 모델 파일 (용량 큼)
+*.pt
+*.pth
+*.h5
+*.ckpt
+ai-engine/models/
+ai-engine/checkpoints/
+
+# 생성된 테스트용 이미지들
+*.jpg
+*.png
+*.jpeg
+
+# --- 5. IDE 설정 파일 ---
 .vscode/
-.env
+.idea/

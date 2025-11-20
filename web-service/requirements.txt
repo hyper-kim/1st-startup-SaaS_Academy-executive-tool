@@ -1,0 +1,18 @@
+# --- Django Core ---
+Django
+djangorestframework
+django-cors-headers
+mysqlclient
+gunicorn
+
+# --- Utilities ---
+requests
+python-dotenv
+Pillow
+python-Levenshtein
+
+# --- Data Processing (엑셀/매칭용) ---
+pandas
+openpyxl
+fuzzywuzzy
+numpy
