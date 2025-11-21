@@ -21,8 +21,8 @@ LABEL_DIR = os.path.join(DATASET_PATH, "labels")
 # 학습 설정 (RTX 4060 8GB 기준)
 BATCH_SIZE = 1          # VRAM 부족하면 1로 줄이세요
 GRADIENT_ACCUMULATION = 8 # 2 * 4 = 8 배치 효과
-EPOCHS = 3              # 데이터가 많으면 3~5번만 봐도 충분함
-LEARNING_RATE = 2e-5
+EPOCHS = 10              # 데이터가 많으면 3~5번만 봐도 충분함
+LEARNING_RATE = 1e-5
 
 # ---------------------------------------------------------
 # 2. 데이터셋 클래스 정의 (Dataset)
@@ -55,18 +55,18 @@ class ReceiptDataset(Dataset):
         
         with open(label_path, "r", encoding="utf-8") as f:
             label_data = json.load(f)
+
+        # 💡 [수정] 학습 방해 요소인 'file' 키 제거 (중요!)
+        if "file" in label_data:
+            del label_data["file"]
             
-        # (주의: generate_dataset.py가 만든 JSON 구조에 따라 수정 필요)
-        # 여기서는 {"total_amount": ..., "student_name": ...} 같은 flat한 구조를 가정
-        # 학습용 정답 텍스트 만들기: {"key": "value"} 문자열로 변환
-        # Donut은 JSON 문자열 자체를 학습합니다.
+        # 모델은 이제 오직 영수증 내용({"receipts": [...]})만 배웁니다.
         target_sequence = json.dumps(label_data, ensure_ascii=False)
         
         # 3. 입력(Pixel Values) 변환
         pixel_values = self.processor(image, return_tensors="pt").pixel_values
         
         # 4. 정답(Labels) 토큰화
-        # 입력 시퀀스: <s_receipt> 정답JSON </s>
         input_sequence = self.task_prompt + target_sequence + self.processor.tokenizer.eos_token
         
         labels = self.processor.tokenizer(
@@ -78,14 +78,12 @@ class ReceiptDataset(Dataset):
             return_tensors="pt",
         )["input_ids"]
         
-        # 패딩 토큰(-100) 처리 (Loss 계산 제외)
         labels[labels == self.processor.tokenizer.pad_token_id] = -100
         
         return {
-            "pixel_values": pixel_values.squeeze(), # (3, H, W)
-            "labels": labels.squeeze()              # (Seq_Len,)
+            "pixel_values": pixel_values.squeeze(),
+            "labels": labels.squeeze()
         }
-
 # ---------------------------------------------------------
 # 3. 학습 실행 함수
 # ---------------------------------------------------------
