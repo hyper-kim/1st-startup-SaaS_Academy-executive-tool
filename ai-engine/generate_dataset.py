@@ -238,7 +238,7 @@ def create_multi_receipt_scene(index):
 if __name__ == "__main__":
     print("🔥 멀티 영수증 데이터셋 생성 시작...")
     # 100장 생성
-    for i in range(100):
+    for i in range(1000):
         create_multi_receipt_scene(i)
         if (i+1) % 10 == 0: print(f"{i+1}장 생성 완료...")
     print("✅ 생성 완료! 'dataset/multi_receipt_train' 폴더 확인.")
