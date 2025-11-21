@@ -56,4 +56,4 @@ def generate_student_db(count=1000):
     return students
 
 if __name__ == "__main__":
-    generate_student_db(100)
+    generate_student_db(1000)
