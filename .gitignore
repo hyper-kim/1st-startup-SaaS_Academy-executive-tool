@@ -41,3 +41,7 @@ ai-engine/checkpoints/
 # --- 5. IDE 설정 파일 ---
 .vscode/
 .idea/
+# --- AI 학습 결과물 무시 (추가) ---
+ai-engine/result/
+*.safetensors
+*.bin
