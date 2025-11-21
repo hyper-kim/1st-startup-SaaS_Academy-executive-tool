@@ -46,7 +46,3 @@ ai-engine/result/
 *.safetensors
 *.bin
 
-/dataset
-/mock_data
-/models
-/result
