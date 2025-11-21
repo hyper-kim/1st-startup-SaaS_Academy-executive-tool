@@ -21,7 +21,7 @@ LABEL_DIR = os.path.join(DATASET_PATH, "labels")
 # 학습 설정 (RTX 4060 8GB 기준)
 BATCH_SIZE = 1          # VRAM 부족하면 1로 줄이세요
 GRADIENT_ACCUMULATION = 8 # 2 * 4 = 8 배치 효과
-EPOCHS = 10              # 데이터가 많으면 3~5번만 봐도 충분함
+EPOCHS = 5              # 데이터가 많으면 3~5번만 봐도 충분함
 LEARNING_RATE = 1e-5
 
 # ---------------------------------------------------------

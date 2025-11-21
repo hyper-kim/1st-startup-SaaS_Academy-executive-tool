@@ -10,7 +10,7 @@ fake = Faker('ko_KR')
 OUTPUT_DIR = "mock_data"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-def generate_student_db(count=100):
+def generate_student_db(count=1000):
     students = []
     
     # 학원비/교재비 패턴 (현실성 부여)

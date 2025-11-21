@@ -1,20 +1,16 @@
-# core/urls.py (새 파일)
+# web-service/core/urls.py
 
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from . import views # core/views.py 파일을 가져옵니다.
+from . import views
 
-# 라우터를 생성합니다.
+# Router 설정
 router = DefaultRouter()
+router.register(r'students', views.StudentViewSet)      # /api/students/
+router.register(r'payments', views.PaymentViewSet)      # /api/payments/
+router.register(r'matching', views.MatchingViewSet, basename='matching') # /api/matching/
 
-# 라우터에 ViewSet을 등록합니다.
-# 'students'라는 URL 경로에 StudentViewSet을 연결합니다.
-router.register(r'students', views.StudentViewSet)
-router.register(r'payments', views.PaymentViewSet)
-router.register(r'matching', views.MatchingViewSet, basename='matching')
-
-# 이제 라우터가 자동으로 URL 패턴을 생성해줍니다.
-# (예: /students/, /students/1/ 등)
 urlpatterns = [
+    # 라우터가 생성한 URL 패턴 포함
     path('', include(router.urls)),
 ]
