@@ -143,7 +143,7 @@ def train():
         model=model,
         args=training_args,
         train_dataset=train_dataset,
-        tokenizer=processor.feature_extractor, # 중요: trainer가 processor 저장하게 함
+        tokenizer=processor.tokenizer, # 중요: trainer가 processor 저장하게 함
     )
 
     # 6. 학습 시작
