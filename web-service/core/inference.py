@@ -1,71 +1,57 @@
-import os
-import glob
 import torch
 import re
 import json
-from django.conf import settings
 from PIL import Image
 from transformers import DonutProcessor, VisionEncoderDecoderModel
-from pathlib import Path
 
-# 전역 변수 (Lazy Loading용)
+# -----------------------------------------------------------------------------
+# ★ [설정] 본인의 Hugging Face 모델 ID로 바꿔주세요
+# 형식: "사용자아이디/모델명"
+# 예시: "hyper-kim/saas-receipt-model"
+# -----------------------------------------------------------------------------
+MODEL_ID = "HYPER-KJY/academy-receipt-model"
+
+# 전역 변수
 model = None
 processor = None
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def load_model_lazy():
     """
-    최초 요청이 들어왔을 때 모델을 로딩합니다.
+    최초 요청 시 Hugging Face Hub에서 모델을 다운로드/로드합니다.
     """
     global model, processor
     
     if model is not None:
         return
 
-    print("💤 잠자던 AI 모델을 깨우는 중... (첫 로딩)")
-
-    # 1. 경로 탐색 (web-service 상위 -> ai-engine -> result)
-    WEB_SERVICE_DIR = Path(settings.BASE_DIR)
-    PROJECT_ROOT = WEB_SERVICE_DIR.parent
-    AI_RESULT_DIR = PROJECT_ROOT / 'ai-engine' / 'result'
-    
-    print(f"📁 경로 탐색 위치: {AI_RESULT_DIR}")
-    
-    # 2. 체크포인트 폴더 자동 찾기
-    checkpoints = glob.glob(os.path.join(str(AI_RESULT_DIR), "checkpoint-*"))
-    
-    if len(checkpoints) > 0:
-        checkpoints.sort(key=lambda x: int(x.split('-')[-1]))
-        MODEL_DIR = checkpoints[-1]
-    else:
-        MODEL_DIR = str(AI_RESULT_DIR)
-
-    print(f"🔥 최종 AI 모델 경로: {MODEL_DIR}")
+    print(f"💤 Hugging Face Hub에서 모델을 찾아오는 중... (ID: {MODEL_ID})")
 
     try:
         # ---------------------------------------------------------
-        # [핵심 수정] 프로세서와 모델 로딩 분리
+        # Hugging Face Hub 자동 로드 (인터넷 연결 필수)
         # ---------------------------------------------------------
+        # 만약 비공개(Private) 모델이라면, 터미널에서 'huggingface-cli login'을 했거나
+        # token="hf_..." 인자를 추가해야 합니다.
         
-        # 1. 프로세서는 '원본 베이스 모델'에서 가져옵니다. (설정 파일 누락 방지)
-        #    만약 체크포인트에 파일이 다 있다면 MODEL_DIR에서 읽겠지만, 없으면 원본에서 읽습니다.
+        # 1. 프로세서 로드
         try:
-            processor = DonutProcessor.from_pretrained(MODEL_DIR)
+            processor = DonutProcessor.from_pretrained(MODEL_ID)
         except OSError:
-            print("⚠️ 체크포인트에 프로세서 설정이 없어 'naver-clova-ix/donut-base'에서 로드합니다.")
+            # 혹시나 설정 파일이 꼬였을 경우를 대비한 안전장치
+            print("⚠️ 모델 저장소에 프로세서 설정이 없어 기본값(donut-base)을 사용합니다.")
             processor = DonutProcessor.from_pretrained("naver-clova-ix/donut-base")
-            
-            # ★ 중요: 학습 때 추가했던 특수 토큰을 똑같이 추가해줘야 함
             processor.tokenizer.add_tokens(["<s_receipt>", "</s_receipt>"])
 
-        # 2. 모델은 '학습된 체크포인트'에서 가져옵니다.
-        model = VisionEncoderDecoderModel.from_pretrained(MODEL_DIR)
+        # 2. 모델 로드
+        model = VisionEncoderDecoderModel.from_pretrained(MODEL_ID)
         
-        # 토큰 크기 맞추기 (모델은 이미 늘어나있고, 프로세서도 방금 늘렸으므로 매칭됨)
+        # 토큰 크기 맞춤
+        model.decoder.resize_token_embeddings(len(processor.tokenizer))
+        
         model.to(device)
         model.eval()
-        
-        print(f"✅ AI 모델 로딩 완료! (Device: {device})")
+        print(f"✅ AI 모델 로딩 완료! (Source: Hugging Face Hub)")
         
     except Exception as e:
         print(f"❌ 모델 로딩 실패: {e}")
@@ -74,7 +60,7 @@ def load_model_lazy():
 
 def run_inference(image_input):
     """
-    views.py에서 호출하는 함수
+    views.py에서 호출하는 추론 함수
     """
     if model is None:
         try:
@@ -97,7 +83,7 @@ def run_inference(image_input):
             task_prompt, add_special_tokens=False, return_tensors="pt"
         ).input_ids.to(device)
 
-        # 4. 생성 (Inference)
+        # 4. 생성 (Inference) - 품질 옵션 적용
         with torch.no_grad():
             outputs = model.generate(
                 pixel_values,
@@ -107,12 +93,10 @@ def run_inference(image_input):
                 pad_token_id=processor.tokenizer.pad_token_id,
                 eos_token_id=processor.tokenizer.eos_token_id,
                 use_cache=True,
-                
-                # [수정된 부분] ----------------------------------
-                num_beams=4,          # 1 -> 4 (더 여러 경우의 수를 탐색하여 정확도 향상)
-                repetition_penalty=1.2, # 반복해서 말하면 패널티 부여 (앵무새 방지)
-                no_repeat_ngram_size=3, # 3단어 이상 똑같이 반복 금지
-                # -----------------------------------------------
+                # 앵무새 방지 옵션
+                num_beams=4,
+                repetition_penalty=1.2,
+                no_repeat_ngram_size=3,
                 
                 bad_words_ids=[[processor.tokenizer.unk_token_id]],
                 return_dict_in_generate=True,
@@ -123,12 +107,13 @@ def run_inference(image_input):
         sequence = sequence.replace(processor.tokenizer.eos_token, "").replace(processor.tokenizer.pad_token, "")
         sequence = re.sub(r"<.*?>", "", sequence, count=1).strip()
         
-        print(f"🤖 AI 분석 결과: {sequence}")
+        print(f"🤖 AI 분석 결과(Raw): {sequence}")
 
+        # 6. JSON 파싱
         try:
             json_output = processor.token2json(sequence)
             return {"status": "success", "result": json_output}
-        except:
+        except Exception as json_err:
             return {"status": "partial_success", "result": {"text_content": sequence}}
 
     except Exception as e:
