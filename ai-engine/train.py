@@ -8,13 +8,13 @@ from transformers import (
     DonutProcessor,
     Seq2SeqTrainingArguments,
     Seq2SeqTrainer,
-    default_data_collator  # ★ [추가] 이게 있어야 에러가 안 납니다!
+    default_data_collator
 )
 
 # ---------------------------------------------------------
 # ★ [설정] Hugging Face Hub 설정
 # ---------------------------------------------------------
-HUB_MODEL_ID = "HYPER-KJY/academy-receipt-model"
+HUB_MODEL_ID = "HYPER-KJY/academy-receipt-model" # 본인 ID 확인
 PUSH_TO_HUB = True
 
 MODEL_ID = "naver-clova-ix/donut-base"
@@ -22,14 +22,14 @@ DATASET_PATH = "dataset/multi_receipt_train"
 IMAGE_DIR = os.path.join(DATASET_PATH, "images")
 LABEL_DIR = os.path.join(DATASET_PATH, "labels")
 
-# 학습 설정
-BATCH_SIZE = 2
-GRADIENT_ACCUMULATION = 4
+# 학습 설정 (P100 메모리 최적화: 배치 1, 누적 8)
+BATCH_SIZE = 1
+GRADIENT_ACCUMULATION = 8
 EPOCHS = 30
 LEARNING_RATE = 1e-5
 
 # ---------------------------------------------------------
-# 2. 데이터셋 클래스 (이미 패딩 처리 완료됨)
+# 2. 데이터셋 클래스
 # ---------------------------------------------------------
 class ReceiptDataset(Dataset):
     def __init__(self, image_dir, label_dir, processor, max_length=768):
@@ -59,17 +59,16 @@ class ReceiptDataset(Dataset):
             
         target_sequence = json.dumps(label_data, ensure_ascii=False)
         
-        # 이미지 전처리
         pixel_values = self.processor(image, return_tensors="pt").pixel_values
         
-        # 라벨 전처리 (여기서 이미 padding="max_length"로 길이를 맞춤!)
+        # 라벨 전처리 (여기서 이미 Padding 처리됨)
         input_sequence = self.task_prompt + target_sequence + self.processor.tokenizer.eos_token
         
         labels = self.processor.tokenizer(
             input_sequence,
             add_special_tokens=False,
             max_length=self.max_length,
-            padding="max_length", # ★ 이미 여기서 패딩을 다 했습니다
+            padding="max_length",
             truncation=True,
             return_tensors="pt",
         )["input_ids"]
@@ -97,12 +96,14 @@ def train():
     
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model.to(device)
+    print(f"✅ 학습 장치: {device}")
 
     if not os.path.exists(IMAGE_DIR):
-        print(f"❌ 오류: 데이터 폴더가 없습니다.")
+        print(f"❌ 오류: 데이터 폴더({IMAGE_DIR})가 없습니다.")
         return
 
     train_dataset = ReceiptDataset(IMAGE_DIR, LABEL_DIR, processor)
+    print(f"📊 학습 데이터 수: {len(train_dataset)}장")
 
     training_args = Seq2SeqTrainingArguments(
         output_dir="./result",
@@ -127,10 +128,8 @@ def train():
         model=model,
         args=training_args,
         train_dataset=train_dataset,
-        tokenizer=processor.tokenizer,
-        
-        # ★ [핵심 수정] 데이터 묶을 때 텍스트용 로직 쓰지 말고, 그냥 묶어라!
-        data_collator=default_data_collator, 
+        tokenizer=processor.tokenizer, # [수정됨] feature_extractor 아님!
+        data_collator=default_data_collator, # [추가됨] 중요!
     )
 
     print(f"🚀 학습 시작! (Hub Upload: {PUSH_TO_HUB})")
