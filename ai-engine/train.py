@@ -132,7 +132,8 @@ def train():
         dataloader_num_workers=2,
         push_to_hub=PUSH_TO_HUB,
         hub_model_id=HUB_MODEL_ID,
-        hub_private_repo=True
+        hub_private_repo=True,
+        optim="adamw_bnb_8bit" 
     )
 
     trainer = Seq2SeqTrainer(
