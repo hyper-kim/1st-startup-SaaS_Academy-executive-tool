@@ -12,17 +12,19 @@ from transformers import (
 )
 
 # ---------------------------------------------------------
-# ★ [설정] Hugging Face Hub 설정
+# ★ [설정] Hugging Face Hub 및 모델 설정
 # ---------------------------------------------------------
-HUB_MODEL_ID = "naver-clova-ix/donut-base" # 본인 ID 확인
+HUB_MODEL_ID = "HYPER-KJY/academy-receipt-model" # 본인 ID 확인
 PUSH_TO_HUB = True
 
-MODEL_ID = "HYPER-KJY/academy-receipt-model"
+# ★ [핵심 1] 모델 초기화 (망가진 모델 버리고 원본으로 회귀)
+MODEL_ID = "naver-clova-ix/donut-base"
+
 DATASET_PATH = "dataset/multi_receipt_train"
 IMAGE_DIR = os.path.join(DATASET_PATH, "images")
 LABEL_DIR = os.path.join(DATASET_PATH, "labels")
 
-# 학습 설정 (P100 메모리 최적화: 배치 1, 누적 8)
+# ★ [핵심 2] T4 GPU 메모리 최적화 설정
 BATCH_SIZE = 1
 GRADIENT_ACCUMULATION = 8
 EPOCHS = 20
@@ -54,9 +56,11 @@ class ReceiptDataset(Dataset):
         with open(label_path, "r", encoding="utf-8") as f:
             label_data = json.load(f)
 
+        # (1) 파일명 제거
         if "file" in label_data:
             del label_data["file"]
 
+        # ★ [핵심 3] 학습 방해꾼 'position'(좌표) 정보 강제 삭제
         if "receipts" in label_data:
             for receipt in label_data["receipts"]:
                 if "position" in receipt:
@@ -66,7 +70,6 @@ class ReceiptDataset(Dataset):
         
         pixel_values = self.processor(image, return_tensors="pt").pixel_values
         
-        # 라벨 전처리 (여기서 이미 Padding 처리됨)
         input_sequence = self.task_prompt + target_sequence + self.processor.tokenizer.eos_token
         
         labels = self.processor.tokenizer(
@@ -93,11 +96,8 @@ def train():
     
     processor = DonutProcessor.from_pretrained(MODEL_ID)
     processor.tokenizer.add_tokens(["<s_receipt>", "</s_receipt>"])
-
-    # -----------------------------------------------------------
-    # [수정 1] 이미지 크기를 절반으로 줄여 메모리 확보 (가장 중요!)
-    # (기존 2560x1920 -> 변경 1280x960)
-    # -----------------------------------------------------------
+    
+    # ★ [핵심 4] 이미지 크기 축소 (메모리 폭발 방지: 2560 -> 1280)
     processor.image_processor.size = {"height": 1280, "width": 960}
     print(f"📉 이미지 입력 크기 조정: {processor.image_processor.size}")
 
@@ -105,10 +105,9 @@ def train():
     model.config.pad_token_id = processor.tokenizer.pad_token_id
     model.config.decoder_start_token_id = processor.tokenizer.convert_tokens_to_ids("<s_receipt>")
     model.decoder.resize_token_embeddings(len(processor.tokenizer))
-
-       # [수정 2] 모델 설정에도 줄어든 이미지 크기 반영
-    model.config.encoder.image_size = [1280, 960] 
     
+    # 모델 설정에도 반영
+    model.config.encoder.image_size = [1280, 960]
     
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model.to(device)
@@ -135,9 +134,13 @@ def train():
         remove_unused_columns=False,
         report_to="none",
         dataloader_num_workers=2,
+        
+        # Hugging Face Hub 설정
         push_to_hub=PUSH_TO_HUB,
         hub_model_id=HUB_MODEL_ID,
         hub_private_repo=True,
+        
+        # ★ [핵심 5] 8-bit Optimizer 사용 (메모리 절약)
         optim="adamw_bnb_8bit" 
     )
 
@@ -145,8 +148,8 @@ def train():
         model=model,
         args=training_args,
         train_dataset=train_dataset,
-        tokenizer=processor.tokenizer, # [수정됨] feature_extractor 아님!
-        data_collator=default_data_collator, # [추가됨] 중요!
+        tokenizer=processor.tokenizer,       # 중요: tokenizer 올바르게 설정
+        data_collator=default_data_collator, # 중요: 데이터 꼬임 방지
     )
 
     print(f"🚀 학습 시작! (Hub Upload: {PUSH_TO_HUB})")
