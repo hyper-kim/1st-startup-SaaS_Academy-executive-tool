@@ -94,10 +94,21 @@ def train():
     processor = DonutProcessor.from_pretrained(MODEL_ID)
     processor.tokenizer.add_tokens(["<s_receipt>", "</s_receipt>"])
 
+    # -----------------------------------------------------------
+    # [수정 1] 이미지 크기를 절반으로 줄여 메모리 확보 (가장 중요!)
+    # (기존 2560x1920 -> 변경 1280x960)
+    # -----------------------------------------------------------
+    processor.image_processor.size = {"height": 1280, "width": 960}
+    print(f"📉 이미지 입력 크기 조정: {processor.image_processor.size}")
+
     model = VisionEncoderDecoderModel.from_pretrained(MODEL_ID)
     model.config.pad_token_id = processor.tokenizer.pad_token_id
     model.config.decoder_start_token_id = processor.tokenizer.convert_tokens_to_ids("<s_receipt>")
     model.decoder.resize_token_embeddings(len(processor.tokenizer))
+
+       # [수정 2] 모델 설정에도 줄어든 이미지 크기 반영
+    model.config.encoder.image_size = [1280, 960] 
+    
     
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model.to(device)
@@ -126,7 +137,8 @@ def train():
         dataloader_num_workers=2,
         push_to_hub=PUSH_TO_HUB,
         hub_model_id=HUB_MODEL_ID,
-        hub_private_repo=True
+        hub_private_repo=True,
+        optim="adamw_bnb_8bit" 
     )
 
     trainer = Seq2SeqTrainer(
