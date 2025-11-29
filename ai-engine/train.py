@@ -14,10 +14,10 @@ from transformers import (
 # ---------------------------------------------------------
 # ★ [설정] Hugging Face Hub 설정
 # ---------------------------------------------------------
-HUB_MODEL_ID = "HYPER-KJY/academy-receipt-model" # 본인 ID 확인
+HUB_MODEL_ID = "naver-clova-ix/donut-base" # 본인 ID 확인
 PUSH_TO_HUB = True
 
-MODEL_ID = "naver-clova-ix/donut-base"
+MODEL_ID = "HYPER-KJY/academy-receipt-model"
 DATASET_PATH = "dataset/multi_receipt_train"
 IMAGE_DIR = os.path.join(DATASET_PATH, "images")
 LABEL_DIR = os.path.join(DATASET_PATH, "labels")
@@ -25,7 +25,7 @@ LABEL_DIR = os.path.join(DATASET_PATH, "labels")
 # 학습 설정 (P100 메모리 최적화: 배치 1, 누적 8)
 BATCH_SIZE = 1
 GRADIENT_ACCUMULATION = 8
-EPOCHS = 30
+EPOCHS = 20
 LEARNING_RATE = 1e-5
 
 # ---------------------------------------------------------
@@ -56,6 +56,11 @@ class ReceiptDataset(Dataset):
 
         if "file" in label_data:
             del label_data["file"]
+
+        if "receipts" in label_data:
+            for receipt in label_data["receipts"]:
+                if "position" in receipt:
+                    del receipt["position"]
             
         target_sequence = json.dumps(label_data, ensure_ascii=False)
         
