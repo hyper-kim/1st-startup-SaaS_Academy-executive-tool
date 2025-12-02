@@ -20,27 +20,209 @@ try:
     with open("mock_data/student_db.json", "r", encoding="utf-8") as f:
         STUDENT_DB = json.load(f)
 except FileNotFoundError:
-    print("❌ 학생 DB가 없습니다. generate_student_db.py를 먼저 실행하세요.")
-    exit()
+    # DB가 없으면 임시 데이터 생성
+    STUDENT_DB = [{"name": "홍길동", "course_name": "수학", "base_fee": 250000, "book_fee": 20000}]
 
 # ---------------------------------------------------------
-# 1. 단일 영수증 생성 (이미지 자체는 깔끔하게 생성 후 나중에 변형)
+# 유틸리티 함수: 랜덤 날짜/금액 포맷
+# ---------------------------------------------------------
+def get_random_date_str():
+    dt = fake.date_time_this_year()
+    formats = [
+        "%Y-%m-%d %H:%M", "%Y/%m/%d %H:%M", "%Y.%m.%d %H:%M",
+        "%y-%m-%d %H:%M", "%Y년 %m월 %d일", "%m/%d %H:%M"
+    ]
+    return dt.strftime(random.choice(formats)), dt.strftime("%Y-%m-%d")
+
+def format_price(price):
+    if random.random() < 0.2: return f"{price}" # 콤마 없음
+    if random.random() < 0.5: return f"{price:,}" # 콤마만
+    return f"{price:,}원" # 원 포함
+
+# ---------------------------------------------------------
+# [스타일 1] 표준 학원 영수증 (기존 스타일)
+# ---------------------------------------------------------
+def draw_receipt_type_standard(draw, width, items, total_price, student_name, academy_name, date_str, fonts):
+    y = 30
+    font_s, font_m, font_b = fonts
+
+    # 헤더
+    draw.text((width//2 - 80, y), "[영수증]", font=font_b, fill=(0,0,0))
+    y += 50
+    draw.text((20, y), f"가맹점: {academy_name}", font=font_m, fill=(0,0,0))
+    y += 30
+    draw.text((20, y), f"일시: {date_str}", font=font_s, fill=(50,50,50))
+    y += 40
+    
+    draw.line((20, y, width-20, y), fill=(0,0,0), width=2)
+    y += 20
+    
+    # 품목
+    for name, price in items:
+        draw.text((20, y), name, font=font_m, fill=(0,0,0))
+        p_text = f"{price:,}"
+        w = font_m.getlength(p_text)
+        draw.text((width-20-w, y), p_text, font=font_m, fill=(0,0,0))
+        y += 30
+        
+    y += 20
+    draw.line((20, y, width-20, y), fill=(0,0,0), width=1)
+    y += 20
+    
+    # 합계
+    draw.text((20, y), "합  계", font=font_b, fill=(0,0,0))
+    total_text = f"{total_price:,}"
+    w = font_b.getlength(total_text)
+    draw.text((width-20-w, y), total_text, font=font_b, fill=(0,0,0))
+    y += 60
+    
+    # 학생 이름 (손글씨 느낌 또는 인쇄)
+    draw.text((width//2 - 30, y), f"학생: {student_name}", font=font_m, fill=(0,0,0))
+    
+    return y + 50 # 최종 높이 반환
+
+# ---------------------------------------------------------
+# [스타일 2] 신용카드 매출전표 스타일 (점선, 카드번호 등)
+# ---------------------------------------------------------
+def draw_receipt_type_card(draw, width, items, total_price, student_name, academy_name, date_str, fonts):
+    y = 20
+    font_s, font_m, font_b = fonts
+    
+    # 헤더
+    draw.text((width//2 - 100, y), "신용카드 매출전표", font=font_b, fill=(0,0,0))
+    y += 40
+    draw.text((width//2 - 60, y), "(회원용)", font=font_s, fill=(0,0,0))
+    y += 40
+    
+    # 가맹점 정보
+    draw.text((20, y), f"가맹점명 : {academy_name}", font=font_s, fill=(0,0,0))
+    y += 25
+    draw.text((20, y), f"사업자번호: {fake.business_number()}", font=font_s, fill=(0,0,0))
+    y += 25
+    draw.text((20, y), f"전화번호 : {fake.phone_number()}", font=font_s, fill=(0,0,0))
+    y += 35
+    
+    # 점선 그리기 함수
+    def draw_dashed_line(yy):
+        for x in range(20, width-20, 10):
+            draw.line((x, yy, x+5, yy), fill=(0,0,0), width=1)
+
+    draw_dashed_line(y)
+    y += 20
+    
+    # 품목 (간략하게)
+    draw.text((20, y), "품명", font=font_s, fill=(0,0,0))
+    draw.text((width-80, y), "금액", font=font_s, fill=(0,0,0))
+    y += 25
+    
+    for name, price in items:
+        # 긴 이름 자르기
+        if len(name) > 10: name = name[:10] + "..."
+        draw.text((20, y), name, font=font_m, fill=(0,0,0))
+        p_text = f"{price:,}"
+        w = font_m.getlength(p_text)
+        draw.text((width-20-w, y), p_text, font=font_m, fill=(0,0,0))
+        y += 30
+
+    draw_dashed_line(y)
+    y += 20
+    
+    # 합계 (강조)
+    draw.text((20, y), "합 계 금 액", font=font_b, fill=(0,0,0))
+    total_text = f"{total_price:,}원"
+    w = font_b.getlength(total_text)
+    draw.text((width-20-w, y), total_text, font=font_b, fill=(0,0,0))
+    y += 50
+    
+    # 카드 정보 (가짜)
+    card_num = f"{random.randint(1000,9999)}-****-****-{random.randint(1000,9999)}"
+    draw.text((20, y), f"카드번호: {card_num}", font=font_s, fill=(0,0,0))
+    y += 25
+    draw.text((20, y), f"승인일시: {date_str}", font=font_s, fill=(0,0,0))
+    y += 40
+    
+    # 학생 이름 (메모란)
+    draw.rectangle((20, y, width-20, y+40), outline=(0,0,0), width=1)
+    draw.text((30, y+10), f"원생: {student_name}", font=font_m, fill=(0,0,0))
+    
+    return y + 60
+
+# ---------------------------------------------------------
+# [스타일 3] 간이 영수증 (테두리 박스)
+# ---------------------------------------------------------
+def draw_receipt_type_simple(draw, width, items, total_price, student_name, academy_name, date_str, fonts):
+    y = 40
+    font_s, font_m, font_b = fonts
+    
+    # 외곽 테두리
+    # 높이는 나중에 crop으로 해결되므로 일단 넉넉하게 그리지 않음 (함수 밖에서 처리 불가하므로 디자인 요소로만)
+    
+    # 타이틀
+    draw.text((width//2 - 60, y), "간이영수증", font=font_b, fill=(0,0,0))
+    y += 60
+    
+    # 공급자
+    draw.text((30, y), f"공급자: {academy_name} (인)", font=font_m, fill=(0,0,0))
+    y += 40
+    
+    # 날짜
+    draw.text((30, y), f"작성일: {date_str}", font=font_s, fill=(0,0,0))
+    y += 40
+    
+    # 테이블 헤더
+    draw.rectangle((20, y, width-20, y+30), fill=(220,220,220))
+    draw.text((30, y+5), "품목", font=font_s, fill=(0,0,0))
+    draw.text((width-100, y+5), "금액", font=font_s, fill=(0,0,0))
+    y += 40
+    
+    # 내용
+    for name, price in items:
+        draw.text((30, y), name, font=font_m, fill=(0,0,0))
+        p_text = f"{price:,}"
+        w = font_m.getlength(p_text)
+        draw.text((width-30-w, y), p_text, font=font_m, fill=(0,0,0))
+        draw.line((20, y+25, width-20, y+25), fill=(200,200,200), width=1)
+        y += 35
+        
+    y += 20
+    # 영수 금액
+    draw.text((30, y), "위 금액을 영수함", font=font_m, fill=(0,0,0))
+    y += 40
+    
+    # 총액 박스
+    draw.rectangle((20, y, width-20, y+50), outline=(0,0,0), width=2)
+    draw.text((40, y+15), f"Total: {total_price:,}", font=font_b, fill=(0,0,0))
+    
+    # 이름 (우측 하단)
+    y += 70
+    draw.text((width-150, y), f"성명: {student_name}", font=font_m, fill=(0,0,0))
+    
+    return y + 50
+
+# ---------------------------------------------------------
+# 통합 생성 함수
 # ---------------------------------------------------------
 def generate_single_receipt_content():
-    # 너비는 고정, 높이는 내용에 따라 가변적
     width = 400
-    padding = 40
-    line_spacing = 30
+    # 높이는 넉넉하게 잡고 나중에 자름
+    temp_height = 1000 
+    
+    # 종이 색상 랜덤 (흰색, 누런색, 푸른색, 회색)
+    bg_choices = [
+        (255, 255, 255), (250, 250, 240), (240, 248, 255), (245, 245, 245)
+    ]
+    bg_color = random.choice(bg_choices)
+    
+    image = Image.new('RGBA', (width, temp_height), color=bg_color + (255,))
+    draw = ImageDraw.Draw(image)
     
     # 데이터 준비
     target_student = random.choice(STUDENT_DB)
-    academy_name = random.choice(['수학의정석', '하이퍼매쓰', '서울아카데미', 'SKY입시']) + " 학원"
-    date_time = fake.date_time_this_year().strftime("%Y-%m-%d %H:%M")
+    academy_name = random.choice(['수학의정석', '하이퍼매쓰', 'SKY입시', '청담어학원'])
+    date_str, date_iso = get_random_date_str()
     
     items = []
     total_price = 0
-    
-    # 수강료/교재비 로직
     if random.random() < 0.9:
         items.append((f"수강료({target_student['course_name']})", target_student['base_fee']))
         total_price += target_student['base_fee']
@@ -48,185 +230,97 @@ def generate_single_receipt_content():
         items.append(("교재비", target_student['book_fee']))
         total_price += target_student['book_fee']
     if total_price == 0:
-        items.append(("수강료", target_student['base_fee']))
+        items.append(("교육비", target_student['base_fee']))
         total_price += target_student['base_fee']
 
-    # 높이 계산 (항목 수에 따라)
-    height = 350 + (len(items) * line_spacing) + 150
-    
-    # 약간 누런 종이 배경
-    bg_color = (random.randint(245, 255), random.randint(245, 255), random.randint(240, 250))
-    image = Image.new('RGBA', (width, height), color=bg_color + (255,))
-    draw = ImageDraw.Draw(image)
-    
+    # 폰트 로드
     font_s = ImageFont.truetype(FONT_PATH, 18)
     font_m = ImageFont.truetype(FONT_PATH, 22)
     font_b = ImageFont.truetype(FONT_PATH, 28)
+    fonts = (font_s, font_m, font_b)
 
-    y = 30
-    # [헤더]
-    draw.text((width//2 - 80, y), "[영수증]", font=font_b, fill=(0,0,0))
-    y += 50
-    draw.text((padding, y), f"가맹점: {academy_name}", font=font_m, fill=(0,0,0))
-    y += 30
-    draw.text((padding, y), f"일시: {date_time}", font=font_s, fill=(50,50,50))
-    y += 40
+    # 스타일 랜덤 선택
+    style_choice = random.choice(['standard', 'card', 'simple'])
     
-    # 구분선
-    draw.line((padding, y, width-padding, y), fill=(0,0,0), width=2)
-    y += 20
+    final_y = 0
+    if style_choice == 'standard':
+        final_y = draw_receipt_type_standard(draw, width, items, total_price, target_student['name'], academy_name, date_str, fonts)
+    elif style_choice == 'card':
+        final_y = draw_receipt_type_card(draw, width, items, total_price, target_student['name'], academy_name, date_str, fonts)
+    else:
+        final_y = draw_receipt_type_simple(draw, width, items, total_price, target_student['name'], academy_name, date_str, fonts)
+
+    # 이미지 자르기 (내용 있는 만큼만)
+    image = image.crop((0, 0, width, final_y))
     
-    # [품목]
-    for name, price in items:
-        draw.text((padding, y), name, font=font_m, fill=(0,0,0))
-        p_text = f"{price:,}"
-        w = font_m.getlength(p_text)
-        draw.text((width-padding-w, y), p_text, font=font_m, fill=(0,0,0))
-        y += line_spacing
-        
-    y += 20
-    draw.line((padding, y, width-padding, y), fill=(0,0,0), width=1)
-    y += 20
-    
-    # [합계]
-    draw.text((padding, y), "합  계", font=font_b, fill=(0,0,0))
-    total_text = f"{total_price:,} 원"
-    w = font_b.getlength(total_text)
-    draw.text((width-padding-w, y), total_text, font=font_b, fill=(0,0,0))
-    y += 60
-    
-    # [손글씨 이름] (파란 볼펜 느낌)
-    pen_color = (0, 0, random.randint(100, 200))
-    draw.text((width//2 - 30, y), target_student['name'], font=font_b, fill=pen_color)
-    
-    # JSON 라벨 정보 (상대 좌표는 나중에 절대 좌표로 변환)
+    # 라벨 정보 (좌표 제거됨, 학습용 텍스트만)
     label_info = {
         "student": target_student['name'],
         "amount": total_price,
-        "date": date_time.split()[0],
+        "date": date_iso,
         "items": items
     }
     
     return image, label_info
 
 # ---------------------------------------------------------
-# 2. 종이 질감 및 구겨짐 효과 (Elastic Transform)
+# 증강 및 배치 (기존 로직 유지 + 강화)
 # ---------------------------------------------------------
 def apply_crumple_effect(pil_img):
-    # 1. PIL(RGBA) -> Numpy 변환
-    img_np = np.array(pil_img) # (Height, Width, 4)
-
-    # 2. 변형 정의
-    # Albumentations는 기본적으로 다채널 이미지를 지원합니다.
-    # RGBA 4채널을 통째로 넣어서, 형태(Alpha)와 색상(RGB)이 같이 구겨지게 합니다.
+    img_np = np.array(pil_img)
     transform = A.Compose([
-        # 물리적 왜곡 (구겨짐) - 빈 공간은 투명하게(0) 채움
-        A.ElasticTransform(
-            alpha=60, 
-            sigma=60 * 0.05, 
-            alpha_affine=60 * 0.03, 
-            p=1.0, 
-            border_mode=cv2.BORDER_CONSTANT, 
-            value=(0,0,0,0) # 투명 배경
-        ),
-        # 노이즈 추가 (RGB, Alpha 모두 약간씩 들어가도 무방함)
-        A.GaussNoise(var_limit=(5.0, 20.0), p=0.5),
+        # 왜곡, 블러, 노이즈, 밝기 변화 등 다양화
+        A.ElasticTransform(alpha=40, sigma=40*0.05, alpha_affine=40*0.03, p=0.8),
+        A.GaussianBlur(blur_limit=(1, 3), p=0.3),
+        A.ISONoise(p=0.3),
+        A.RandomBrightnessContrast(p=0.5),
+        A.GaussNoise(var_limit=(5.0, 15.0), p=0.3),
     ])
-    
-    # 3. 적용
     augmented = transform(image=img_np)['image']
-    
-    # 4. 결과 반환 (RGBA 모드 명시)
     return Image.fromarray(augmented, 'RGBA')
 
-# ---------------------------------------------------------
-# 3. 메인 생성기: 책상 위에 여러 장 배치 + 그림자
-# ---------------------------------------------------------
 def create_multi_receipt_scene(index):
-    # 1. 배경 (책상) 생성 - 1024x1024
     bg_width, bg_height = 1024, 1024
-    # 책상 색상 (나무색 or 회색 톤)
-    desk_color = (random.randint(100, 150), random.randint(80, 130), random.randint(60, 100))
+    desk_color = (random.randint(50, 200), random.randint(50, 200), random.randint(50, 200))
     background = Image.new('RGBA', (bg_width, bg_height), color=desk_color + (255,))
     
-    # 배경에 노이즈 추가 (질감)
     bg_np = np.array(background)
     noise = np.random.randint(-20, 20, bg_np.shape, dtype='int16')
     bg_np = np.clip(bg_np + noise, 0, 255).astype('uint8')
     background = Image.fromarray(bg_np, 'RGBA')
 
     receipts_metadata = []
+    # 1장에 집중 학습하도록 1개만 배치 (복잡도 낮춤)
+    num_receipts = 1 
     
-    # 영수증 개수 (1 ~ 3개 랜덤)
-    num_receipts = random.randint(1, 3)
-    
-    # 겹치지 않게 배치하기 위한 영역 리스트
-    occupied_boxes = []
-
     for _ in range(num_receipts):
-        # 1. 영수증 생성
         receipt_img, metadata = generate_single_receipt_content()
-        
-        # 2. 구겨짐 효과 적용
         receipt_img = apply_crumple_effect(receipt_img)
         
-        # 3. 회전 (아주 약간만, +/- 5도)
-        angle = random.uniform(-5, 5)
-        receipt_img = receipt_img.rotate(angle, resample=Image.BICUBIC, expand=True, fillcolor=(0,0,0,0)) # 투명 배경 확장
+        # 회전 및 위치
+        angle = random.uniform(-10, 10)
+        receipt_img = receipt_img.rotate(angle, resample=Image.BICUBIC, expand=True)
         
-        # 4. 그림자 생성 (Drop Shadow)
-        # 영수증 모양의 검은색 마스크 생성
-        shadow = Image.new('RGBA', receipt_img.size, (0, 0, 0, 0))
-        shadow_draw = ImageDraw.Draw(shadow)
-        # 영수증이 있는 부분(알파>0)만 검게 칠함
-        r_np = np.array(receipt_img)
-        mask = r_np[:, :, 3] > 0
-        shadow_np = np.array(shadow)
-        shadow_np[mask] = [0, 0, 0, 100] # 검은색, 투명도 100
-        shadow = Image.fromarray(shadow_np)
-        
-        # 블러 처리로 그림자 부드럽게
-        shadow = shadow.filter(ImageFilter.GaussianBlur(radius=10))
-        
-        # 5. 위치 선정 (겹치지 않게 시도)
         w, h = receipt_img.size
-        placed = False
+        x = (bg_width - w) // 2 + random.randint(-50, 50)
+        y = (bg_height - h) // 2 + random.randint(-50, 50)
         
-        for _ in range(10): # 10번 시도
-            x = random.randint(50, bg_width - w - 50)
-            y = random.randint(50, bg_height - h - 50)
-            
-            # 겹침 확인 (간단한 박스 충돌)
-            collision = False
-            new_box = [x, y, x+w, y+h]
-            for box in occupied_boxes:
-                # 겹치는지 확인 (A.left < B.right and A.right > B.left ...)
-                if (new_box[0] < box[2] and new_box[2] > box[0] and
-                    new_box[1] < box[3] and new_box[3] > box[1]):
-                    collision = True
-                    break
-            
-            if not collision:
-                occupied_boxes.append(new_box)
-                
-                # 6. 붙이기 (그림자 먼저, 그 위에 영수증)
-                # 그림자는 약간 아래 오른쪽으로 치우치게 (+10, +10)
-                background.paste(shadow, (x + 10, y + 10), shadow) 
-                background.paste(receipt_img, (x, y), receipt_img)
-                
-                # 7. 메타데이터 좌표 업데이트 (절대 좌표)
-                # (실제로는 회전된 텍스트 좌표 계산이 복잡하지만, 
-                # 여기서는 OCR 학습용으로 '영수증의 내용'만 저장합니다.
-                # LayoutLM 학습을 위해서는 BBox 계산이 더 정교해야 함)
-                metadata['position'] = {"x": x, "y": y, "w": w, "h": h}
-                receipts_metadata.append(metadata)
-                placed = True
-                break
+        # 그림자
+        shadow = Image.new('RGBA', receipt_img.size, (0, 0, 0, 0))
+        shadow_np = np.array(shadow)
+        mask = np.array(receipt_img)[:, :, 3] > 0
+        shadow_np[mask] = [0, 0, 0, 100]
+        shadow = Image.fromarray(shadow_np).filter(ImageFilter.GaussianBlur(10))
+        
+        background.paste(shadow, (x+10, y+10), shadow)
+        background.paste(receipt_img, (x, y), receipt_img)
+        
+        receipts_metadata.append(metadata)
     
-    # 8. 최종 저장 (JPG로 변환하여 배경과 합침)
     final_image = background.convert('RGB')
-    
     filename = f"multi_receipt_{index:05d}"
+    
+    # 학습/검증용 폴더 분리 없이 다 때려넣음 (Kaggle에서 split 함)
     final_image.save(f"{DATASET_DIR}/images/{filename}.jpg")
     
     with open(f"{DATASET_DIR}/labels/{filename}.json", 'w', encoding='utf-8') as f:
@@ -236,9 +330,8 @@ def create_multi_receipt_scene(index):
         }, f, ensure_ascii=False, indent=2)
 
 if __name__ == "__main__":
-    print("🔥 멀티 영수증 데이터셋 생성 시작...")
-    # 100장 생성
-    for i in range(1000):
+    print("🔥 업그레이드된 영수증 데이터 생성 시작 (다양한 레이아웃)...")
+    for i in range(1000): # 1000장 생성
         create_multi_receipt_scene(i)
-        if (i+1) % 10 == 0: print(f"{i+1}장 생성 완료...")
-    print("✅ 생성 완료! 'dataset/multi_receipt_train' 폴더 확인.")
+        if (i+1) % 100 == 0: print(f"{i+1}장 완료...")
+    print("✅ 생성 완료!")
