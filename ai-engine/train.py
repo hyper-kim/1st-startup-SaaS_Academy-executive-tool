@@ -20,7 +20,7 @@ PUSH_TO_HUB = True
 # ★ [핵심 1] 모델 초기화 (망가진 모델 버리고 원본으로 회귀)
 MODEL_ID = "HYPER-KJY/academy-receipt-model"
 
-DATASET_PATH = "/kaggle/input/studentdataset/kaggle/working/1st-startup-SaaS_Academy-executive-tool/ai-engine/dataset/multi_receipt_train"
+DATASET_PATH = "./dataset/multi_receipt_train"
 IMAGE_DIR = os.path.join(DATASET_PATH, "images")
 LABEL_DIR = os.path.join(DATASET_PATH, "labels")
 
