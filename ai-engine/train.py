@@ -27,9 +27,9 @@ MODEL_ID = "naver-clova-ix/donut-base"
 # 메모리가 부족하면 BATCH_SIZE를 1로 줄이세요.
 BATCH_SIZE = 2
 GRADIENT_ACCUMULATION = 4
-EPOCHS = 30 # 충분히 학습
+EPOCHS = 10 # 충분히 학습
 LEARNING_RATE = 2e-5
-IMAGE_SIZE = (1280, 960) # (Height, Width) - 해상도 고정
+IMAGE_SIZE = (960, 720) # (Height, Width) - 해상도 고정
 
 # 경로 설정 (Kaggle 환경)
 WORKING_DIR = "/kaggle/working"
